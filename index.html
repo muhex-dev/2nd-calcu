@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0057B8">
+<title>Unilever POS</title>
+<style>
+:root {
+--primary: #0057B8;
+--primary-dark: #003d82;
+--primary-soft: #eff6ff;
+--primary-border: #bfdbfe;
+--green: #10b981;
+--green-soft: #ecfdf5;
+--red: #ef4444;
+--red-soft: #fef2f2;
+--warn: #f59e0b;
+--text: #0f172a;
+--muted: #64748b;
+--border: #e2e8f0;
+--bg: #f8fafc;
+}
+*, *::before, *::after {
+box-sizing: border-box;
+margin: 0;
+padding: 0;
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+-webkit-tap-highlight-color: transparent;
+user-select: none;
+}
+
+/* HARD SCREEN BOUNDARY LOCK: Impossible to overflow horizontally */
+html, body {
+position: fixed;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+width: 100%;
+height: 100%;
+overflow: hidden;
+background: var(--bg);
+color: var(--text);
+font-size: 13px;
+-webkit-font-smoothing: antialiased;
+}
+body {
+display: flex;
+flex-direction: column;
+}
+
+/* 1. Top Header (44px) */
+header {
+flex: 0 0 44px;
+height: 44px;
+width: 100%;
+background: #fff;
+border-bottom: 1px solid var(--border);
+padding: 0 10px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+z-index: 25;
+overflow: hidden;
+}
+.brand { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 14.5px; color: var(--primary); min-width: 0; overflow: hidden; }
+.pill-badge { background: var(--primary-soft); color: var(--primary); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; white-space: nowrap; flex-shrink: 0; }
+.btn-top { background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 5px 9px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
+
+/* Toast Notification */
+#toast { background: var(--text); color: #fff; text-align: center; padding: 7px 14px; font-size: 12px; font-weight: 600; display: none; position: fixed; top: 50px; left: 50%; transform: translateX(-50%); border-radius: 99px; z-index: 120; box-shadow: 0 4px 12px rgba(0,0,0,0.18); white-space: nowrap; max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
+
+/* 2. Middle Views (Strictly contained inside screen width) */
+.view {
+display: none;
+flex: 1 1 auto;
+min-height: 0;
+width: 100%;
+overflow-y: auto;
+overflow-x: hidden;
+padding: 8px;
+position: relative;
+}
+.view.active { display: block; }
+
+/* VIEW 1: STRICT FLEX LAYOUT */
+#view-pos.active {
+display: flex;
+flex-direction: column;
+overflow: hidden;
+padding: 6px 8px;
+gap: 6px;
+}
+
+/* 3. Bottom Navigation Bar */
+.bottom-nav {
+flex: 0 0 56px;
+height: 56px;
+width: 100%;
+background: #fff;
+border-top: 1px solid var(--border);
+display: flex;
+z-index: 60;
+overflow: hidden;
+}
+.nav-btn { flex: 1; min-width: 0; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; overflow: hidden; }
+.nav-btn.active { color: var(--primary); font-weight: 800; background: var(--primary-soft); }
+.nav-btn .ico { font-size: 16px; margin-bottom: 2px; }
+
+/* Minimal Cards & Controls */
+.box { background: #fff; padding: 10px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 8px; width: 100%; overflow: hidden; }
+.box-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; width: 100%; min-width: 0; gap: 6px; }
+input[type="text"], input[type="number"], textarea { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg); color: var(--text); font-weight: 600; outline: none; user-select: auto; }
+textarea { font-family: monospace; font-size: 11px; resize: vertical; min-height: 54px; }
+input:focus, textarea:focus { border-color: var(--primary); background: #fff; }
+.row { display: flex; gap: 5px; align-items: center; width: 100%; min-width: 0; }
+.row-auto { display: flex; gap: 4px; align-items: center; flex-shrink: 0; min-width: 0; }
+.f-1 { flex: 1 1 0%; min-width: 0; }
+.f-2 { flex: 2 1 0%; min-width: 0; }
+
+/* 2-ROW HORIZONTAL PRODUCT SCROLLER (Uses Flex-Wrap Column so it NEVER stretches parent width!) */
+.pos-scroll-wrap {
+flex: 0 0 204px;
+height: 204px;
+width: 100%;
+overflow: hidden;
+position: relative;
+}
+.pos-grid {
+display: flex;
+flex-direction: column;
+flex-wrap: wrap;
+align-content: flex-start;
+height: 204px;
+width: 100%;
+gap: 6px;
+overflow-x: auto;
+overflow-y: hidden;
+padding: 1px 0 3px 0;
+-webkit-overflow-scrolling: touch;
+scrollbar-width: none;
+}
+.pos-grid::-webkit-scrollbar { display: none; }
+
+.pos-item {
+width: 142px;
+height: 97px;
+flex: 0 0 97px;
+border: 1px solid var(--border);
+border-radius: 10px;
+padding: 6px 7px;
+background: #fff;
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+overflow: hidden;
+}
+.pos-item.selected { border: 1.5px solid var(--primary); background: var(--primary-soft); }
+.pos-name { font-size: 11.5px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pos-rate { font-size: 10.5px; font-weight: 700; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.unit-bar { display: flex; background: var(--bg); border-radius: 6px; padding: 1.5px; border: 1px solid var(--border); width: 100%; }
+.u-btn { flex: 1; min-width: 0; border: none; background: transparent; font-size: 9.5px; font-weight: 700; padding: 2px 0; border-radius: 4px; color: var(--muted); cursor: pointer; }
+.u-btn.active { background: var(--primary); color: #fff; }
+
+.qty-bar { display: flex; gap: 3px; width: 100%; }
+.q-btn { flex: 1; min-width: 0; border: none; border-radius: 6px; padding: 4px 0; font-size: 11px; font-weight: 800; cursor: pointer; }
+.q-minus { background: var(--red-soft); color: var(--red); }
+.q-plus { background: var(--primary); color: #fff; }
+.q-plus5 { background: #dbeafe; color: var(--primary); }
+.q-btn:active { transform: scale(0.95); }
+
+/* ONLY THE ORDER LIST IS SCROLLABLE */
+.order-container {
+flex: 1 1 auto;
+min-height: 0;
+width: 100%;
+display: flex;
+flex-direction: column;
+background: #fff;
+border: 1px solid var(--border);
+border-radius: 12px;
+padding: 8px;
+overflow: hidden;
+}
+.order-scroll-area {
+flex: 1 1 auto;
+width: 100%;
+overflow-y: auto;
+overflow-x: hidden;
+-webkit-overflow-scrolling: touch;
+}
+.line-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--border); gap: 4px; width: 100%; min-width: 0; overflow: hidden; }
+.line-item:last-child { border-bottom: none; }
+.qty-inline { width: 34px !important; height: 25px !important; padding: 1px !important; text-align: center; margin: 0 !important; background: #fff !important; font-weight: 800 !important; font-size: 11.5px !important; flex-shrink: 0; }
+.step-btn { width: 23px; height: 25px; border: none; border-radius: 6px; font-size: 13px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-minus { background: var(--red-soft); color: var(--red); }
+.step-plus { background: var(--primary-soft); color: var(--primary); }
+
+/* PAYMENT DOCK: Fits 100% inside parent width */
+.pos-pay-zone {
+flex: 0 0 auto;
+width: 100%;
+background: #fff;
+border: 1.5px solid var(--primary);
+border-radius: 12px;
+overflow: hidden;
+box-shadow: 0 -4px 16px rgba(0,87,184,0.12);
+position: relative;
+z-index: 35;
+}
+.pos-pay-zone.expanded {
+position: absolute;
+left: 8px;
+right: 8px;
+bottom: 6px;
+width: auto;
+box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.28);
+}
+#payBackdrop {
+display: none;
+position: absolute;
+inset: 0;
+background: rgba(15, 23, 42, 0.35);
+z-index: 30;
+}
+#payBackdrop.open { display: block; }
+
+.pay-summary-bar {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 8px 10px;
+background: var(--primary-soft);
+cursor: pointer;
+gap: 6px;
+width: 100%;
+min-width: 0;
+overflow: hidden;
+}
+.pay-bar-left { display: flex; flex-direction: column; flex: 1 1 0%; min-width: 0; overflow: hidden; }
+.pay-bar-total { font-size: 14px; font-weight: 900; color: var(--primary); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pay-bar-sub { font-size: 10px; font-weight: 700; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pay-bar-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.btn-quick-cash { background: var(--green); color: #fff; border: none; font-size: 11px; font-weight: 800; padding: 6px 8px; border-radius: 7px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.pay-toggle-pill { background: var(--primary); color: #fff; font-size: 11px; font-weight: 800; padding: 6px 8px; border-radius: 7px; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0; }
+
+/* EXPANDABLE PAYMENT DRAWER BODY */
+.pay-Drawer-body {
+display: none;
+padding: 10px;
+border-top: 1px solid #bfdbfe;
+background: #fff;
+width: 100%;
+max-height: 56vh;
+overflow-y: auto;
+overflow-x: hidden;
+-webkit-overflow-scrolling: touch;
+}
+.pos-pay-zone.expanded .pay-Drawer-body { display: block; }
+
+/* 3-Column Multi-Payment Chip Grid */
+.pay-entries-grid {
+display: grid;
+grid-template-columns: repeat(3, minmax(0, 1fr));
+gap: 5px;
+margin-bottom: 7px;
+width: 100%;
+}
+.pay-chip {
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+padding: 5px 6px;
+border-radius: 7px;
+font-size: 11px;
+border: 1px solid var(--border);
+background: var(--bg);
+min-width: 0;
+overflow: hidden;
+}
+.pay-chip.chip-cash { background: var(--green-soft); border-color: #a7f3d0; color: #065f46; }
+.pay-chip.chip-bank { background: var(--primary-soft); border-color: #bfdbfe; color: #1e40af; }
+.pay-chip-top { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 2px; min-width: 0; }
+.pay-chip-type { font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.pay-chip-del { border: none; background: rgba(0,0,0,0.08); color: inherit; border-radius: 4px; width: 15px; height: 15px; font-size: 9px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pay-chip-amt { font-size: 11px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Bank Quick Chips */
+.bank-pills { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; width: 100%; }
+.bk-chip { border: 1px solid var(--border); background: var(--bg); font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 99px; color: var(--text); cursor: pointer; }
+.bk-chip:active { background: var(--primary); color: #fff; }
+
+.pm-btn { border: 1px solid var(--border); background: var(--bg); padding: 7px 2px; border-radius: 8px; font-size: 11px; font-weight: 700; color: var(--muted); cursor: pointer; text-align: center; min-width: 0; }
+.pm-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.status-strip { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; border-radius: 8px; font-size: 11.5px; font-weight: 700; margin: 5px 0; width: 100%; min-width: 0; gap: 6px; overflow: hidden; }
+.st-ok { background: var(--green-soft); color: #065f46; }
+.st-due { background: var(--red-soft); color: #991b1b; }
+
+/* Buttons & Confirmations */
+.btn-main { width: 100%; border: none; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 800; cursor: pointer; background: var(--primary); color: #fff; }
+.btn-save { background: var(--green); }
+.btn-mini { padding: 4px 7px; font-size: 11px; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; transition: 0.15s; flex-shrink: 0; white-space: nowrap; }
+.b-del { background: var(--red-soft); color: var(--red); }
+.b-edit { background: var(--primary-soft); color: var(--primary); }
+.b-pay { background: var(--green-soft); color: #065f46; }
+.confirm-armed { background: var(--red) !important; color: #fff !important; box-shadow: 0 0 0 2px #fca5a5; }
+
+/* Minimal Reconciliation Strip */
+.kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; width: 100%; }
+.kpi-card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; min-width: 0; overflow: hidden; }
+.kpi-lbl { font-size: 10px; color: var(--muted); font-weight: 700; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-val { font-size: 15px; font-weight: 800; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tag { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 4px; }
+.t-cash { background: var(--green-soft); color: #065f46; }
+.t-bank { background: var(--primary-soft); color: var(--primary); }
+.t-cred { background: var(--red-soft); color: var(--red); }
+
+/* Floating Mini Calculator */
+#calcModal { display: none; position: fixed; top: 48px; right: 8px; width: 230px; max-width: calc(100% - 16px); background: #0f172a; color: #fff; border-radius: 12px; padding: 10px; z-index: 90; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+#calcModal.open { display: block; }
+.c-screen { background: #1e293b; padding: 8px; border-radius: 8px; text-align: right; margin-bottom: 6px; font-family: monospace; }
+.c-hist { font-size: 10px; color: #94a3b8; min-height: 13px; word-break: break-all; }
+.c-main { font-size: 18px; font-weight: 700; color: #38bdf8; word-break: break-all; }
+.c-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; width: 100%; }
+.c-key { padding: 8px 0; border: none; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer; background: #334155; color: #fff; min-width: 0; }
+.c-key.op { background: #0284c7; }
+.c-key.eq { background: var(--green); grid-column: span 2; }
+.c-key.clr { background: var(--red); }
+</style>
+</head>
+<body>
+
+<header>
+<div class="brand">
+<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Unilever POS</span>
+<span id="badgeLines" class="pill-badge">0 Items</span>
+</div>
+<button type="button" class="btn-top" id="btnTogglePad">🔢 Calc</button>
+</header>
+
+<div id="toast">Saved</div>
+
+<!-- FLOATING QUICK CALCULATOR -->
+<div id="calcModal">
+<div style="display:flex; justify-content:space-between; margin-bottom:5px; font-size:11px; color:#94a3b8;">
+<span>Quick Math</span>
+<span id="btnClosePad" style="color:#f87171; cursor:pointer; font-weight:700;">✕</span>
+</div>
+<div class="c-screen">
+<div id="padExpr" class="c-hist"></div>
+<div id="padOut" class="c-main">0</div>
+</div>
+<div class="c-grid" id="padKeys">
+<button type="button" class="c-key clr" data-k="C">C</button>
+<button type="button" class="c-key" data-k="B">⌫</button>
+<button type="button" class="c-key op" data-k="%">%</button>
+<button type="button" class="c-key op" data-k="/">÷</button>
+<button type="button" class="c-key" data-k="7">7</button>
+<button type="button" class="c-key" data-k="8">8</button>
+<button type="button" class="c-key" data-k="9">9</button>
+<button type="button" class="c-key op" data-k="*">×</button>
+<button type="button" class="c-key" data-k="4">4</button>
+<button type="button" class="c-key" data-k="5">5</button>
+<button type="button" class="c-key" data-k="6">6</button>
+<button type="button" class="c-key op" data-k="-">−</button>
+<button type="button" class="c-key" data-k="1">1</button>
+<button type="button" class="c-key" data-k="2">2</button>
+<button type="button" class="c-key" data-k="3">3</button>
+<button type="button" class="c-key op" data-k="+">+</button>
+<button type="button" class="c-key" data-k="0">0</button>
+<button type="button" class="c-key" data-k=".">.</button>
+<button type="button" class="c-key eq" data-k="=">=</button>
+</div>
+</div>
+
+<!-- VIEW 1: POS WITH STRICT FLEX LOCK & STICKY EXPANDABLE PAYMENT -->
+<main id="view-pos" class="view active">
+
+<!-- Search & Custom Item Bar -->
+<div class="row" style="flex: 0 0 auto;">
+<input id="inpFilter" type="text" placeholder="🔍 Search or swipe products..." style="margin:0; background:#fff; flex:1 1 0%; min-width:0;">
+<button type="button" class="btn-top" id="btnToggleCustom" style="padding:7px 9px;">+ Custom</button>
+</div>
+
+<!-- Collapsible Custom Item Box -->
+<div id="customBox" class="box" style="display:none; padding:8px; margin-bottom:0; flex: 0 0 auto;">
+<div class="row">
+<div class="f-2"><input id="cusName" type="text" placeholder="Item Name"></div>
+<div class="f-1"><input id="cusPrice" type="number" step="any" placeholder="Price"></div>
+<div class="f-1"><input id="cusQty" type="number" step="any" value="1"></div>
+<button type="button" class="btn-mini b-edit" id="btnAddCustom" style="padding:7px 8px;">Add</button>
+</div>
+</div>
+
+<!-- 2-Row Horizontal Swipe Product Grid -->
+<div class="pos-scroll-wrap">
+<div id="posGrid" class="pos-grid"></div>
+</div>
+
+<!-- ONLY THE ORDER LIST IS SCROLLABLE -->
+<div class="order-container">
+<div class="box-head" style="margin-bottom:4px;">
+<span id="lblReceiptTitle" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Order Summary (<span id="outUnits">0</span> Units)</span>
+<button type="button" class="btn-mini b-del" id="btnClearOrder">Clear</button>
+</div>
+<div id="receiptList" class="order-scroll-area"></div>
+</div>
+
+<!-- Backdrop when Payment Drawer is Expanded -->
+<div id="payBackdrop"></div>
+
+<!-- STICKY BOTTOM EXPANDABLE PAYMENT DOCK ABOVE BOTTOM NAV -->
+<div id="paySection" class="pos-pay-zone">
+<!-- Collapsed Bar (Always Visible Above Bottom Tabs) -->
+<div class="pay-summary-bar" id="btnTogglePayDrawer">
+<div class="pay-bar-left">
+<span class="pay-bar-total">Total: <span id="outGrand">0.00 ETB</span></span>
+<span class="pay-bar-sub" id="lblCollapsedPaySub">Tap to add payment or save order</span>
+</div>
+<div class="pay-bar-actions">
+<button type="button" class="btn-quick-cash" id="btnQuickCashSave" title="1-Tap Full Cash Save">⚡ Cash</button>
+<div class="pay-toggle-pill" id="lblPayToggleBtn">💳 Pay ▲</div>
+</div>
+</div>
+
+<!-- Expandable Detailed Multi-Payment Drawer Body -->
+<div class="pay-Drawer-body">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:4px; width:100%; min-width:0;">
+<span style="font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Add Payment:</span>
+<div class="row-auto">
+<button type="button" class="btn-mini b-edit" id="btnHalfRem" style="font-size:10px; padding:2px 6px;">50%</button>
+<button type="button" class="btn-mini b-edit" id="btnFillRem" style="font-size:10px; padding:2px 6px;">Fill Exact</button>
+<button type="button" class="btn-mini b-del" id="btnClearPays" style="font-size:10px; padding:2px 6px; display:none;">Clear</button>
+</div>
+</div>
+
+<div class="row" style="margin-bottom:7px;">
+<input id="payAmountInput" type="number" step="any" placeholder="Amount..." style="margin:0; flex:1.2 1 0%; min-width:0;">
+<button type="button" class="btn-mini b-pay" id="btnAddCashPay" style="flex:1 1 0%; padding:8px 2px; font-weight:800; min-width:0; text-align:center;">+ Cash</button>
+<button type="button" class="btn-mini b-edit" id="btnAddTransPay" style="flex:1 1 0%; padding:8px 2px; font-weight:800; min-width:0; text-align:center;">+ Transfer</button>
+</div>
+
+<!-- Recorded Payments Grid (Add as many payments as needed) -->
+<div id="paymentEntriesList"></div>
+
+<!-- Bank Reference & Quick Chips -->
+<div id="bankNameRow" style="display:none; margin-bottom:6px;">
+<div class="bank-pills" id="bankQuickChips">
+<span class="bk-chip" data-bk="Telebirr">Telebirr</span>
+<span class="bk-chip" data-bk="CBE">CBE</span>
+<span class="bk-chip" data-bk="Awash">Awash</span>
+<span class="bk-chip" data-bk="Abyssinia">BOA</span>
+<span class="bk-chip" data-bk="Dashen">Dashen</span>
+</div>
+<input id="inpBankRef" type="text" placeholder="Bank / Telebirr Ref (Optional)">
+</div>
+
+<!-- Live Remaining Balance / Change Status -->
+<div id="creditBanner" class="status-strip st-ok">
+<span id="lblCreditStatus" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Remaining (Credit):</span>
+<span id="outCredit" style="flex-shrink:0;">0.00 ETB</span>
+</div>
+
+<!-- Shop Name & Save -->
+<input type="hidden" id="editOrderId" value="">
+<datalist id="shopListSuggestions"></datalist>
+<div class="row" style="margin-top:6px;">
+<input id="inpShop" list="shopListSuggestions" type="text" placeholder="Shop / Customer Name" style="flex:1 1 0%; min-width:0; margin:0;">
+<button type="button" class="btn-main btn-save" id="btnSaveOrder" style="width:auto; margin:0; padding:8px 14px; flex-shrink:0;">Save</button>
+</div>
+</div>
+</div>
+</main>
+
+<!-- VIEW 2: HISTORY & DAILY TOTALS -->
+<main id="view-history" class="view">
+<div class="kpi-grid">
+<div class="kpi-card">
+<div class="kpi-lbl">Total Sales (<span id="sumCount">0</span>)</div>
+<div class="kpi-val" id="sumRev" style="color:var(--primary);">0.00</div>
+</div>
+<div class="kpi-card">
+<div class="kpi-lbl">💵 Cash in Hand</div>
+<div class="kpi-val" id="sumCash" style="color:var(--green);">0.00</div>
+</div>
+<div class="kpi-card">
+<div class="kpi-lbl">🏦 Bank Transfer</div>
+<div class="kpi-val" id="sumBank" style="color:#0284c7;">0.00</div>
+</div>
+<div class="kpi-card">
+<div class="kpi-lbl">⏳ Unpaid Credit</div>
+<div class="kpi-val" id="sumCredit" style="color:var(--red);">0.00</div>
+</div>
+</div>
+
+<div class="box" style="padding:8px 10px; font-size:11px; color:var(--muted);" id="sumMoved">
+No items moved yet today.
+</div>
+
+<div class="row" style="margin-bottom:8px;">
+<div class="row f-1" id="histFilterBar">
+<button type="button" class="pm-btn active f-1" data-hf="all">All Orders</button>
+<button type="button" class="pm-btn f-1" data-hf="credit">⏳ Unpaid Credit</button>
+</div>
+<button type="button" class="btn-mini b-del" id="btnWipeHistory" style="padding:7px 10px;">Reset All</button>
+</div>
+
+<div id="historyList"></div>
+</main>
+
+<!-- VIEW 3: PRODUCTS SETUP & BACKUP -->
+<main id="view-products" class="view">
+<div class="box">
+<div class="box-head" id="lblSkuForm">Add / Edit Product</div>
+<input type="hidden" id="editSkuId" value="">
+<input id="skuName" type="text" placeholder="Product Name (e.g. Omo 500g)" style="margin-bottom:6px;">
+<div class="row">
+<div class="f-2"><input id="skuPrice" type="number" step="any" placeholder="Carton Price (ETB)"></div>
+<div class="f-1"><input id="skuPack" type="number" step="1" value="24" placeholder="Pcs/Ctn"></div>
+<button type="button" class="btn-main" id="btnSaveSku" style="width:auto; margin:0; padding:8px 14px; flex-shrink:0;">Save</button>
+</div>
+</div>
+
+<div class="box">
+<div class="box-head">Saved Price List</div>
+<div id="catalogList"></div>
+</div>
+
+<!-- Backup & Restore Card -->
+<div class="box">
+<div class="box-head">💾 Backup & Restore Data</div>
+<div class="row" style="margin-bottom:6px;">
+<button type="button" class="btn-mini b-edit f-1" id="btnDownloadFile" style="padding:8px;">💾 Save File</button>
+<button type="button" class="btn-mini b-pay f-1" id="btnOpenFile" style="padding:8px;">📂 Open File</button>
+<input type="file" id="inpBackupFile" accept=".json,application/json,.txt" style="display:none;">
+</div>
+<div class="row">
+<button type="button" class="btn-mini b-edit f-1" id="btnExportText" style="padding:8px;">📋 Copy Text</button>
+<button type="button" class="btn-mini b-pay f-1" id="btnImportText" style="padding:8px;">⬆️ Paste Text</button>
+</div>
+
+<div id="exportTextBox" style="display:none; margin-top:8px;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:11px; font-weight:700; color:var(--primary);">
+<span>Copied! Tap box to select all:</span>
+<button type="button" class="btn-mini b-del" id="btnHideExport" style="padding:2px 6px;">Hide</button>
+</div>
+<textarea id="outBackupText" readonly onclick="this.focus();this.select();"></textarea>
+</div>
+
+<div id="importTextBox" style="display:none; margin-top:8px;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:11px; font-weight:700; color:#065f46;">
+<span>Paste backup text below:</span>
+<button type="button" class="btn-mini b-del" id="btnHideImport" style="padding:2px 6px;">Cancel</button>
+</div>
+<textarea id="inpRestoreText" placeholder="Paste backup code here..."></textarea>
+<button type="button" class="btn-main btn-save" id="btnConfirmRestoreText" style="padding:8px; margin-top:6px;">✅ Restore Now</button>
+</div>
+</div>
+</main>
+
+<!-- BOTTOM NAVIGATION -->
+<nav class="bottom-nav" id="bottomNav">
+<button type="button" class="nav-btn active" data-tab="pos">
+<span class="ico">🛒</span>
+<span>POS Order</span>
+</button>
+<button type="button" class="nav-btn" data-tab="history">
+<span class="ico">📊</span>
+<span id="navHistTxt">History (0)</span>
+</button>
+<button type="button" class="nav-btn" data-tab="products">
+<span class="ico">📦</span>
+<span id="navProdTxt">Products (6)</span>
+</button>
+</nav>
+
+<script>
+(function() {
+var products = [
+{ id: 101, name: "Omo Multiactive 500g", price: 2400, pack: 24, unit: "ctn" },
+{ id: 102, name: "Sunlight Powder 1kg", price: 2220, pack: 12, unit: "ctn" },
+{ id: 103, name: "Lifebuoy Soap 125g", price: 2880, pack: 72, unit: "ctn" },
+{ id: 104, name: "Knorr Chicken Cube", price: 1350, pack: 30, unit: "ctn" },
+{ id: 105, name: "Signal Toothpaste", price: 1920, pack: 24, unit: "ctn" },
+{ id: 106, name: "Sunlight Bar Soap", price: 1500, pack: 50, unit: "ctn" }
+];
+var history = [];
+var cart = [];
+var currentPayments = [];
+var histFilter = "all";
+var padStr = "";
+var payExpanded = false;
+
+function loadStorage() {
+try {
+var p = localStorage.getItem("ul_pos_prod_v7");
+var h = localStorage.getItem("ul_pos_hist_v7");
+if (p) products = JSON.parse(p);
+if (h) history = JSON.parse(h);
+} catch (err) {}
+}
+
+function saveStorage() {
+try {
+localStorage.setItem("ul_pos_prod_v7", JSON.stringify(products));
+localStorage.setItem("ul_pos_hist_v7", JSON.stringify(history));
+} catch (err) {}
+}
+
+function notify(msg) {
+var el = document.getElementById("toast");
+el.textContent = msg;
+el.style.display = "block";
+clearTimeout(el._t);
+el._t = setTimeout(function() { el.style.display = "none"; }, 1800);
+}
+
+function togglePayDrawer(forceState) {
+payExpanded = typeof forceState === "boolean" ? forceState : !payExpanded;
+var sec = document.getElementById("paySection");
+var bkd = document.getElementById("payBackdrop");
+var btn = document.getElementById("lblPayToggleBtn");
+sec.classList.toggle("expanded", payExpanded);
+if (bkd) bkd.classList.toggle("open", payExpanded);
+btn.textContent = payExpanded ? "Hide ▼" : "💳 Pay ▲";
+}
+
+function copyTextUniversal(text, cb) {
+var fallback = function() {
+try {
+var ta = document.createElement("textarea");
+ta.value = text;
+ta.style.position = "fixed";
+ta.style.top = "-9999px";
+document.body.appendChild(ta);
+ta.focus();
+ta.select();
+var ok = document.execCommand("copy");
+document.body.removeChild(ta);
+if (cb) cb(ok);
+} catch (e) { if (cb) cb(false); }
+};
+if (navigator.clipboard && window.isSecureContext) {
+navigator.clipboard.writeText(text).then(function() { if (cb) cb(true); }).catch(fallback);
+} else {
+fallback();
+}
+}
+
+// 2-Tap Safety Guard
+function requireDoubleTap(btn, confirmText, actionFn) {
+if (btn.getAttribute("data-armed") === "1") {
+btn.removeAttribute("data-armed");
+btn.classList.remove("confirm-armed");
+actionFn();
+} else {
+var origText = btn.textContent;
+btn.setAttribute("data-armed", "1");
+btn.classList.add("confirm-armed");
+btn.textContent = confirmText || "Sure?";
+notify("Tap again to confirm");
+setTimeout(function() {
+if (btn.getAttribute("data-armed") === "1") {
+btn.removeAttribute("data-armed");
+btn.classList.remove("confirm-armed");
+btn.textContent = origText;
+}
+}, 3000);
+}
+}
+
+function getUnitRate(p) {
+var pk = p.pack || 1;
+if (p.unit === "pc") return { label: "Pc", rate: p.price / pk };
+if (p.unit === "doz") return { label: "Doz", rate: (p.price / pk) * 12 };
+return { label: "Ctn", rate: p.price };
+}
+
+function switchView(tabName) {
+["pos", "history", "products"].forEach(function(v) {
+document.getElementById("view-" + v).classList.toggle("active", v === tabName);
+});
+document.querySelectorAll("#bottomNav .nav-btn").forEach(function(b) {
+b.classList.toggle("active", b.getAttribute("data-tab") === tabName);
+});
+render();
+}
+
+function calcOrderTotals() {
+var grand = 0, units = 0;
+cart.forEach(function(c) { grand += c.total; units += c.qty; });
+return { grand: Math.round(grand * 100) / 100, units: units };
+}
+
+function addPayment(type) {
+var inp = document.getElementById("payAmountInput");
+var val = parseFloat(inp.value);
+if (isNaN(val) || val <= 0) {
+var t = calcOrderTotals();
+var pTot = getPaymentTotals();
+var rem = Math.max(Math.round((t.grand - (pTot.cash + pTot.transfer)) * 100) / 100, 0);
+if (rem > 0) val = rem;
+else return notify("Type amount first");
+}
+currentPayments.push({
+id: Date.now() + Math.random(),
+type: type,
+amount: Math.round(val * 100) / 100
+});
+inp.value = "";
+render();
+}
+
+function getPaymentTotals() {
+var cash = 0, transfer = 0;
+currentPayments.forEach(function(p) {
+if (p.type === "Cash") cash += p.amount;
+else if (p.type === "Transfer") transfer += p.amount;
+});
+return {
+cash: Math.round(cash * 100) / 100,
+transfer: Math.round(transfer * 100) / 100
+};
+}
+
+function updatePaymentDisplay() {
+var t = calcOrderTotals();
+var pTot = getPaymentTotals();
+var paid = Math.round((pTot.cash + pTot.transfer) * 100) / 100;
+var diff = Math.round((t.grand - paid) * 100) / 100;
+
+var subEl = document.getElementById("lblCollapsedPaySub");
+if (t.grand === 0) {
+subEl.textContent = "Tap products above to start order";
+} else if (paid === 0) {
+subEl.textContent = "Unpaid: " + t.grand.toFixed(2) + " ETB • Tap Pay or ⚡Cash";
+} else if (diff > 0) {
+subEl.textContent = "Paid: " + paid.toFixed(0) + " (" + currentPayments.length + ") • Credit: " + diff.toFixed(2) + " ETB";
+} else if (diff < 0) {
+subEl.textContent = "Paid: " + paid.toFixed(0) + " • Change: " + Math.abs(diff).toFixed(2) + " ETB";
+} else {
+subEl.textContent = "✅ Fully Paid (" + paid.toFixed(2) + " ETB)";
+}
+
+var clrBtn = document.getElementById("btnClearPays");
+if (clrBtn) clrBtn.style.display = currentPayments.length > 0 ? "inline-block" : "none";
+
+var pList = document.getElementById("paymentEntriesList");
+pList.innerHTML = "";
+if (currentPayments.length === 0) {
+pList.className = "";
+} else {
+pList.className = "pay-entries-grid";
+currentPayments.forEach(function(p) {
+var chip = document.createElement("div");
+chip.className = "pay-chip " + (p.type === "Cash" ? "chip-cash" : "chip-bank");
+
+var top = document.createElement("div");
+top.className = "pay-chip-top";
+
+var lbl = document.createElement("span");
+lbl.className = "pay-chip-type";
+lbl.textContent = p.type === "Cash" ? "💵 Cash" : "🏦 Bank";
+
+var remBtn = document.createElement("button");
+remBtn.type = "button";
+remBtn.className = "pay-chip-del";
+remBtn.textContent = "✕";
+remBtn.onclick = function() {
+currentPayments = currentPayments.filter(function(x) { return x.id !== p.id; });
+render();
+};
+
+top.appendChild(lbl);
+top.appendChild(remBtn);
+
+var amt = document.createElement("div");
+amt.className = "pay-chip-amt";
+amt.textContent = p.amount.toFixed(0) + " ETB";
+
+chip.appendChild(top);
+chip.appendChild(amt);
+pList.appendChild(chip);
+});
+}
+
+document.getElementById("bankNameRow").style.display = pTot.transfer > 0 ? "block" : "none";
+
+var banner = document.getElementById("creditBanner");
+var statusLbl = document.getElementById("lblCreditStatus");
+var outCred = document.getElementById("outCredit");
+
+if (diff > 0) {
+banner.className = "status-strip st-due";
+statusLbl.textContent = "⏳ Remaining (Credit Due):";
+outCred.textContent = diff.toFixed(2) + " ETB";
+} else if (diff < 0) {
+banner.className = "status-strip st-ok";
+statusLbl.textContent = "💵 Change to Return:";
+outCred.textContent = Math.abs(diff).toFixed(2) + " ETB";
+} else {
+banner.className = "status-strip st-ok";
+statusLbl.textContent = "✅ Fully Paid:";
+outCred.textContent = "0.00 ETB";
+}
+}
+
+function render() {
+var totals = calcOrderTotals();
+document.getElementById("badgeLines").textContent = cart.length + " Items";
+var outUnitsEl = document.getElementById("outUnits");
+if (outUnitsEl) outUnitsEl.textContent = totals.units;
+document.getElementById("navHistTxt").textContent = "History (" + history.length + ")";
+document.getElementById("navProdTxt").textContent = "Products (" + products.length + ")";
+
+// Populate shop autocomplete suggestions
+var shopDatalist = document.getElementById("shopListSuggestions");
+var uniqueShops = {};
+history.forEach(function(h) { if (h.shop && h.shop !== "Walk-in Shop") uniqueShops[h.shop] = true; });
+if (shopDatalist) {
+shopDatalist.innerHTML = Object.keys(uniqueShops).map(function(s) { return "<option value='" + s.replace(/'/g, "") + "'>"; }).join("");
+}
+
+// 1. 2-Row Horizontal POS Grid
+var posGrid = document.getElementById("posGrid");
+posGrid.innerHTML = "";
+var q = (document.getElementById("inpFilter").value || "").toLowerCase();
+
+products.forEach(function(p) {
+if (q && p.name.toLowerCase().indexOf(q) === -1) return;
+var u = getUnitRate(p);
+var key = p.id + "_" + u.label;
+var inCartQty = 0;
+cart.forEach(function(c) { if (c.key === key) inCartQty = c.qty; });
+
+var card = document.createElement("div");
+card.className = "pos-item" + (inCartQty ? " selected" : "");
+
+var top = document.createElement("div");
+var title = document.createElement("div");
+title.className = "pos-name";
+title.textContent = (inCartQty ? "(" + inCartQty + ") " : "") + p.name;
+
+var rate = document.createElement("div");
+rate.className = "pos-rate";
+rate.textContent = u.rate.toFixed(2) + " / " + u.label;
+
+var uBar = document.createElement("div");
+uBar.className = "unit-bar";
+[["ctn", "Ctn"], ["doz", "Doz"], ["pc", "Pc"]].forEach(function(pair) {
+var b = document.createElement("button");
+b.type = "button";
+b.className = "u-btn" + ((p.unit || "ctn") === pair[0] ? " active" : "");
+b.textContent = pair[1];
+b.onclick = function() { p.unit = pair[0]; render(); };
+uBar.appendChild(b);
+});
+
+top.appendChild(title);
+top.appendChild(rate);
+top.appendChild(uBar);
+
+var qBar = document.createElement("div");
+qBar.className = "qty-bar";
+[[-1, "-1", "q-minus"], [1, "+1", "q-plus"], [5, "+5", "q-plus5"]].forEach(function(act) {
+var qb = document.createElement("button");
+qb.type = "button";
+qb.className = "q-btn " + act[2];
+qb.textContent = act[1];
+qb.onclick = function() { adjustCartItem(p, act[0]); };
+qBar.appendChild(qb);
+});
+
+card.appendChild(top);
+card.appendChild(qBar);
+posGrid.appendChild(card);
+});
+
+// 2. Current Order Lines (With - and + Steppers & Top-Sorting)
+var rList = document.getElementById("receiptList");
+rList.innerHTML = "";
+if (cart.length === 0) {
+var empty = document.createElement("div");
+empty.style.cssText = "text-align:center; color:#94a3b8; padding:18px 8px; font-size:12px;";
+empty.textContent = "Swipe & tap products above to add";
+rList.appendChild(empty);
+} else {
+cart.forEach(function(item) {
+var row = document.createElement("div");
+row.className = "line-item";
+
+var left = document.createElement("div");
+left.style.flex = "1 1 0%";
+left.style.minWidth = "0";
+left.innerHTML = "<div style='font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>" + item.name + "</div><div style='font-size:11px;color:#64748b;'>@ " + item.price.toFixed(2) + "</div>";
+
+var right = document.createElement("div");
+right.className = "row-auto";
+
+var bMinus = document.createElement("button");
+bMinus.type = "button";
+bMinus.className = "step-btn step-minus";
+bMinus.textContent = "−";
+bMinus.onclick = function() {
+if (item.qty <= 1) {
+requireDoubleTap(this, "?", function() {
+cart = cart.filter(function(x) { return x.id !== item.id; });
+render();
+});
+} else {
+item.qty -= 1;
+item.total = item.qty * item.price;
+render();
+}
+};
+
+var qIn = document.createElement("input");
+qIn.type = "number";
+qIn.step = "any";
+qIn.className = "qty-inline";
+qIn.value = item.qty;
+qIn.onchange = function() {
+var val = parseFloat(this.value);
+if (isNaN(val) || val <= 0) cart = cart.filter(function(x) { return x.id !== item.id; });
+else { item.qty = val; item.total = val * item.price; }
+render();
+};
+
+var bPlus = document.createElement("button");
+bPlus.type = "button";
+bPlus.className = "step-btn step-plus";
+bPlus.textContent = "+";
+bPlus.onclick = function() {
+item.qty += 1;
+item.total = item.qty * item.price;
+render();
+};
+
+var tot = document.createElement("strong");
+tot.style.cssText = "min-width:46px; text-align:right; font-size:11.5px;";
+tot.textContent = item.total.toFixed(2);
+
+var del = document.createElement("button");
+del.type = "button";
+del.className = "btn-mini b-del";
+del.style.padding = "4px 6px";
+del.textContent = "✕";
+del.onclick = function() {
+requireDoubleTap(this, "Del?", function() {
+cart = cart.filter(function(x) { return x.id !== item.id; });
+render();
+});
+};
+
+right.appendChild(bMinus);
+right.appendChild(qIn);
+right.appendChild(bPlus);
+right.appendChild(tot);
+right.appendChild(del);
+row.appendChild(left);
+row.appendChild(right);
+rList.appendChild(row);
+});
+}
+
+document.getElementById("outGrand").textContent = totals.grand.toFixed(2) + " ETB";
+updatePaymentDisplay();
+
+// 3. Products Catalog
+var cList = document.getElementById("catalogList");
+cList.innerHTML = "";
+products.forEach(function(p) {
+var row = document.createElement("div");
+row.className = "line-item";
+
+var info = document.createElement("div");
+info.style.flex = "1 1 0%";
+info.style.minWidth = "0";
+info.innerHTML = "<div style='font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>" + p.name + "</div><div style='font-size:11px;color:#64748b;'>" + p.price.toFixed(2) + " ETB (" + (p.pack || 1) + " pcs/ctn)</div>";
+
+var acts = document.createElement("div");
+acts.className = "row-auto";
+
+var bEdit = document.createElement("button");
+bEdit.type = "button";
+bEdit.className = "btn-mini b-edit";
+bEdit.textContent = "Edit";
+bEdit.onclick = function() {
+document.getElementById("skuName").value = p.name;
+document.getElementById("skuPrice").value = p.price;
+document.getElementById("skuPack").value = p.pack || 24;
+document.getElementById("editSkuId").value = p.id;
+document.getElementById("lblSkuForm").textContent = "Edit Product";
+document.getElementById("view-products").scrollTo(0, 0);
+};
+
+var bDel = document.createElement("button");
+bDel.type = "button";
+bDel.className = "btn-mini b-del";
+bDel.textContent = "✕";
+bDel.onclick = function() {
+requireDoubleTap(this, "Sure?", function() {
+products = products.filter(function(x) { return x.id !== p.id; });
+saveStorage(); render(); notify("Product Deleted");
+});
+};
+
+acts.appendChild(bEdit);
+acts.appendChild(bDel);
+row.appendChild(info);
+row.appendChild(acts);
+cList.appendChild(row);
+});
+
+// 4. History & Reconciliation
+var hList = document.getElementById("historyList");
+hList.innerHTML = "";
+var dayRev = 0, dayCash = 0, dayBank = 0, dayCredit = 0, tally = {};
+
+history.forEach(function(rec) {
+dayRev += rec.grand;
+dayCash += (rec.cash || 0);
+dayBank += (rec.transfer || 0);
+dayCredit += (rec.credit || 0);
+rec.items.forEach(function(ln) { tally[ln.name] = (tally[ln.name] || 0) + ln.qty; });
+});
+
+var filteredHist = history.filter(function(rec) {
+return histFilter === "credit" ? (rec.credit || 0) > 0 : true;
+});
+
+if (filteredHist.length === 0) {
+var hEmpty = document.createElement("div");
+hEmpty.className = "box";
+hEmpty.style.cssText = "text-align:center; color:#94a3b8; padding:16px;";
+hEmpty.textContent = histFilter === "credit" ? "🎉 No unpaid credit!" : "No saved orders yet.";
+hList.appendChild(hEmpty);
+} else {
+filteredHist.forEach(function(rec) {
+var box = document.createElement("div");
+box.className = "box";
+if ((rec.credit || 0) > 0) box.style.borderColor = "#fca5a5";
+
+var head = document.createElement("div");
+head.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding-bottom:6px; margin-bottom:6px; border-bottom:1px solid var(--border); gap:6px; min-width:0;";
+var hLeft = document.createElement("div");
+hLeft.style.flex = "1 1 0%";
+hLeft.style.minWidth = "0";
+hLeft.innerHTML = "<strong style='display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>" + rec.shop + "</strong><div style='font-size:10px;color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>" + rec.date + (rec.bankRef ? " • " + rec.bankRef : "") + "</div>";
+
+var hRight = document.createElement("div");
+hRight.className = "row-auto";
+
+if ((rec.credit || 0) > 0) {
+var btnPaid = document.createElement("button");
+btnPaid.type = "button";
+btnPaid.className = "btn-mini b-pay";
+btnPaid.textContent = "✓ Paid";
+btnPaid.onclick = function() {
+requireDoubleTap(this, "Paid?", function() {
+rec.cash = (rec.cash || 0) + rec.credit;
+if (Array.isArray(rec.payments)) rec.payments.push({ id: Date.now(), type: "Cash", amount: rec.credit });
+rec.credit = 0;
+saveStorage(); render(); notify("Marked Paid");
+});
+};
+hRight.appendChild(btnPaid);
+}
+
+var btnRe = document.createElement("button");
+btnRe.type = "button";
+btnRe.className = "btn-mini b-edit";
+btnRe.textContent = "Edit";
+btnRe.onclick = function() {
+cart = JSON.parse(JSON.stringify(rec.items));
+document.getElementById("inpShop").value = rec.shop;
+document.getElementById("editOrderId").value = rec.id;
+document.getElementById("inpBankRef").value = rec.bankRef || "";
+currentPayments = [];
+if (rec.payments && Array.isArray(rec.payments) && rec.payments.length > 0) {
+currentPayments = JSON.parse(JSON.stringify(rec.payments));
+} else {
+if (rec.cash > 0) currentPayments.push({ id: Math.random(), type: "Cash", amount: rec.cash });
+if (rec.transfer > 0) currentPayments.push({ id: Math.random(), type: "Transfer", amount: rec.transfer });
+}
+document.getElementById("lblReceiptTitle").innerHTML = "Editing: " + rec.shop + " (<span id='outUnits'>0</span> Units)";
+togglePayDrawer(true);
+switchView("pos");
+};
+
+var btnCp = document.createElement("button");
+btnCp.type = "button";
+btnCp.className = "btn-mini b-edit";
+btnCp.textContent = "Copy";
+btnCp.onclick = function() {
+var lines = [rec.shop + " (" + rec.date + ")", "----------------"];
+rec.items.forEach(function(i) { lines.push(i.name + ": " + i.qty + " x " + i.price.toFixed(2) + " = " + i.total.toFixed(2)); });
+lines.push("TOTAL: " + rec.grand.toFixed(2) + " ETB");
+if (rec.cash > 0) lines.push("Cash: " + rec.cash.toFixed(2));
+if (rec.transfer > 0) lines.push("Transfer: " + rec.transfer.toFixed(2) + (rec.bankRef ? " (" + rec.bankRef + ")" : ""));
+if (rec.credit > 0) lines.push("CREDIT DUE: " + rec.credit.toFixed(2));
+copyTextUniversal(lines.join("\n"), function() { notify("Copied!"); });
+};
+
+var btnRm = document.createElement("button");
+btnRm.type = "button";
+btnRm.className = "btn-mini b-del";
+btnRm.textContent = "✕";
+btnRm.onclick = function() {
+requireDoubleTap(this, "Sure?", function() {
+history = history.filter(function(x) { return x.id !== rec.id; });
+saveStorage(); render(); notify("Receipt Deleted");
+});
+};
+
+hRight.appendChild(btnRe);
+hRight.appendChild(btnCp);
+hRight.appendChild(btnRm);
+head.appendChild(hLeft);
+head.appendChild(hRight);
+box.appendChild(head);
+
+rec.items.forEach(function(ln) {
+var lRow = document.createElement("div");
+lRow.style.cssText = "display:flex; justify-content:space-between; font-size:12px; padding:2px 0; color:#334155; gap:6px; min-width:0;";
+lRow.innerHTML = "<span style='white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>" + ln.name + " <b>x" + ln.qty + "</b></span><span style='flex-shrink:0;'>" + ln.total.toFixed(2) + "</span>";
+box.appendChild(lRow);
+});
+
+var foot = document.createElement("div");
+foot.style.cssText = "border-top:1px solid var(--border); margin-top:6px; padding-top:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;";
+var tags = document.createElement("div");
+if ((rec.cash || 0) > 0) tags.innerHTML += "<span class='tag t-cash'>Cash: " + rec.cash.toFixed(0) + "</span>";
+if ((rec.transfer || 0) > 0) tags.innerHTML += "<span class='tag t-bank'>Bank: " + rec.transfer.toFixed(0) + "</span>";
+if ((rec.credit || 0) > 0) tags.innerHTML += "<span class='tag t-cred'>Credit: " + rec.credit.toFixed(0) + "</span>";
+
+var fTot = document.createElement("strong");
+fTot.style.color = "var(--primary)";
+fTot.textContent = rec.grand.toFixed(2) + " ETB";
+
+foot.appendChild(tags);
+foot.appendChild(fTot);
+box.appendChild(foot);
+hList.appendChild(box);
+});
+}
+
+document.getElementById("sumRev").textContent = dayRev.toFixed(2);
+document.getElementById("sumCash").textContent = dayCash.toFixed(2);
+document.getElementById("sumBank").textContent = dayBank.toFixed(2);
+document.getElementById("sumCredit").textContent = dayCredit.toFixed(2);
+document.getElementById("sumCount").textContent = history.length;
+
+var tKeys = Object.keys(tally);
+document.getElementById("sumMoved").textContent = tKeys.length
+? "Moved: " + tKeys.map(function(k) { return k + " (" + tally[k] + ")"; }).join(" • ")
+: "No items moved yet today.";
+}
+
+// Add or update item and place it at the TOP of the order list
+function adjustCartItem(prod, delta) {
+var u = getUnitRate(prod);
+var key = prod.id + "_" + u.label;
+var existingIdx = -1;
+cart.forEach(function(c, idx) { if (c.key === key) existingIdx = idx; });
+
+if (existingIdx !== -1) {
+var existing = cart[existingIdx];
+existing.qty += delta;
+existing.total = existing.qty * existing.price;
+cart.splice(existingIdx, 1);
+if (existing.qty > 0) {
+cart.unshift(existing);
+}
+} else if (delta > 0) {
+cart.unshift({ id: Date.now() + Math.random(), key: key, name: prod.name + " [" + u.label + "]", price: u.rate, qty: delta, total: u.rate * delta });
+}
+render();
+}
+
+// Event Listeners
+document.getElementById("bottomNav").onclick = function(e) {
+var btn = e.target.closest(".nav-btn");
+if (btn) switchView(btn.getAttribute("data-tab"));
+};
+
+document.getElementById("btnToggleCustom").onclick = function() {
+var box = document.getElementById("customBox");
+box.style.display = box.style.display === "none" ? "block" : "none";
+};
+
+document.getElementById("btnTogglePayDrawer").onclick = function(e) {
+if (e.target.closest("#btnQuickCashSave")) return;
+togglePayDrawer();
+};
+
+document.getElementById("payBackdrop").onclick = function() {
+togglePayDrawer(false);
+};
+
+document.getElementById("btnQuickCashSave").onclick = function(e) {
+e.stopPropagation();
+if (cart.length === 0) return notify("Add products first");
+var t = calcOrderTotals();
+var shop = document.getElementById("inpShop").value.trim() || "Walk-in Shop";
+var now = new Date();
+var editId = document.getElementById("editOrderId").value;
+var rec = {
+id: editId ? parseFloat(editId) : Date.now(),
+shop: shop,
+date: now.toLocaleDateString() + " " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+items: JSON.parse(JSON.stringify(cart)),
+payments: [{ id: Date.now(), type: "Cash", amount: t.grand }],
+grand: t.grand,
+cash: t.grand,
+transfer: 0,
+credit: 0,
+bankRef: ""
+};
+if (editId) history = history.map(function(h) { return h.id === rec.id ? rec : h; });
+else history.unshift(rec);
+saveStorage();
+resetCurrentCart();
+switchView("history");
+notify("⚡ Saved Full Cash (" + t.grand.toFixed(0) + " ETB)");
+};
+
+document.getElementById("btnAddCashPay").onclick = function() { addPayment("Cash"); };
+document.getElementById("btnAddTransPay").onclick = function() { addPayment("Transfer"); };
+
+document.getElementById("payAmountInput").onkeydown = function(e) {
+if (e.key === "Enter") addPayment("Cash");
+};
+
+document.getElementById("btnHalfRem").onclick = function() {
+var t = calcOrderTotals();
+var pTot = getPaymentTotals();
+var rem = Math.max(Math.round((t.grand - (pTot.cash + pTot.transfer)) * 100) / 100, 0);
+if (rem > 0) document.getElementById("payAmountInput").value = Math.round((rem / 2) * 100) / 100;
+else notify("No remaining balance");
+};
+
+document.getElementById("btnFillRem").onclick = function() {
+var t = calcOrderTotals();
+var pTot = getPaymentTotals();
+var rem = Math.max(Math.round((t.grand - (pTot.cash + pTot.transfer)) * 100) / 100, 0);
+if (rem > 0) document.getElementById("payAmountInput").value = rem;
+else notify("No remaining balance");
+};
+
+document.getElementById("btnClearPays").onclick = function() {
+currentPayments = [];
+render();
+};
+
+document.getElementById("bankQuickChips").onclick = function(e) {
+var chip = e.target.closest(".bk-chip");
+if (!chip) return;
+var inp = document.getElementById("inpBankRef");
+var bk = chip.getAttribute("data-bk");
+inp.value = inp.value ? inp.value + " / " + bk : bk;
+};
+
+document.getElementById("histFilterBar").onclick = function(e) {
+var btn = e.target.closest(".pm-btn");
+if (!btn) return;
+histFilter = btn.getAttribute("data-hf");
+document.querySelectorAll("#histFilterBar .pm-btn").forEach(function(b) {
+b.classList.toggle("active", b.getAttribute("data-hf") === histFilter);
+});
+render();
+};
+
+document.getElementById("inpFilter").oninput = render;
+
+document.getElementById("btnTogglePad").onclick = function() { document.getElementById("calcModal").classList.toggle("open"); };
+document.getElementById("btnClosePad").onclick = function() { document.getElementById("calcModal").classList.remove("open"); };
+
+document.getElementById("padKeys").onclick = function(e) {
+var k = e.target.getAttribute("data-k");
+if (!k) return;
+var out = document.getElementById("padOut"), exp = document.getElementById("padExpr");
+if (k === "C") { padStr = ""; out.textContent = "0"; exp.textContent = ""; }
+else if (k === "B") { padStr = padStr.slice(0, -1); out.textContent = padStr || "0"; }
+else if (k === "=") {
+try {
+var res = Function('"use strict";return (' + padStr.replace(/%/g, "/100") + ')')();
+exp.textContent = padStr + " =";
+padStr = String(Math.round(res * 100) / 100);
+out.textContent = padStr;
+} catch (err) { out.textContent = "Err"; padStr = ""; }
+} else { padStr += k; out.textContent = padStr; }
+};
+
+document.getElementById("btnAddCustom").onclick = function() {
+var n = document.getElementById("cusName").value.trim();
+var p = parseFloat(document.getElementById("cusPrice").value);
+var q = parseFloat(document.getElementById("cusQty").value);
+if (!n || isNaN(p) || isNaN(q) || q <= 0) return notify("Enter Name & Price");
+cart.unshift({ id: Date.now() + Math.random(), key: "cus_" + Date.now(), name: n, price: p, qty: q, total: p * q });
+document.getElementById("cusName").value = "";
+document.getElementById("cusPrice").value = "";
+document.getElementById("cusQty").value = "1";
+document.getElementById("customBox").style.display = "none";
+render();
+};
+
+function resetCurrentCart() {
+cart = [];
+currentPayments = [];
+document.getElementById("editOrderId").value = "";
+document.getElementById("inpShop").value = "";
+document.getElementById("inpBankRef").value = "";
+document.getElementById("payAmountInput").value = "";
+document.getElementById("lblReceiptTitle").innerHTML = "Order Summary (<span id='outUnits'>0</span> Units)";
+togglePayDrawer(false);
+render();
+}
+
+document.getElementById("btnClearOrder").onclick = function() {
+if (cart.length === 0) return;
+requireDoubleTap(this, "Sure?", function() {
+resetCurrentCart();
+notify("Cleared");
+});
+};
+
+document.getElementById("btnSaveOrder").onclick = function() {
+if (cart.length === 0) return notify("Add products first");
+var t = calcOrderTotals();
+var pTot = getPaymentTotals();
+var paid = pTot.cash + pTot.transfer;
+var credVal = Math.max(Math.round((t.grand - paid) * 100) / 100, 0);
+var shop = document.getElementById("inpShop").value.trim();
+
+if (credVal > 0 && !shop) return notify("Enter Shop Name for Credit!");
+if (!shop) shop = "Walk-in Shop";
+
+var now = new Date();
+var editId = document.getElementById("editOrderId").value;
+var rec = {
+id: editId ? parseFloat(editId) : Date.now(),
+shop: shop,
+date: now.toLocaleDateString() + " " + now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+items: JSON.parse(JSON.stringify(cart)),
+payments: JSON.parse(JSON.stringify(currentPayments)),
+grand: t.grand,
+cash: pTot.cash,
+transfer: pTot.transfer,
+credit: credVal,
+bankRef: document.getElementById("inpBankRef").value.trim()
+};
+
+if (editId) history = history.map(function(h) { return h.id === rec.id ? rec : h; });
+else history.unshift(rec);
+
+saveStorage();
+resetCurrentCart();
+switchView("history");
+notify("Order Saved");
+};
+
+document.getElementById("btnWipeHistory").onclick = function() {
+if (history.length === 0) return;
+requireDoubleTap(this, "Wipe All?", function() {
+history = []; saveStorage(); render(); notify("History Reset");
+});
+};
+
+document.getElementById("btnSaveSku").onclick = function() {
+var n = document.getElementById("skuName").value.trim();
+var p = parseFloat(document.getElementById("skuPrice").value);
+var pk = parseInt(document.getElementById("skuPack").value, 10) || 1;
+var editId = document.getElementById("editSkuId").value;
+if (!n || isNaN(p)) return notify("Enter Name & Price");
+
+if (editId) {
+var idNum = parseFloat(editId);
+products.forEach(function(x) { if (x.id === idNum) { x.name = n; x.price = p; x.pack = pk; } });
+document.getElementById("editSkuId").value = "";
+document.getElementById("lblSkuForm").textContent = "Add / Edit Product";
+} else {
+products.unshift({ id: Date.now(), name: n, price: p, pack: pk, unit: "ctn" });
+}
+document.getElementById("skuName").value = "";
+document.getElementById("skuPrice").value = "";
+saveStorage(); render(); notify("Product Saved");
+};
+
+// Backup & Restore Handlers
+function getBackupJson() {
+return JSON.stringify({ products: products, history: history });
+}
+
+function restoreFromJsonString(raw) {
+var cleaned = (raw || "").trim();
+if (!cleaned) return notify("Paste backup text first");
+var first = cleaned.indexOf("{");
+var last = cleaned.lastIndexOf("}");
+if (first !== -1 && last > first) cleaned = cleaned.substring(first, last + 1);
+try {
+var data = JSON.parse(cleaned);
+if (Array.isArray(data.products)) products = data.products;
+if (Array.isArray(data.history)) history = data.history;
+saveStorage();
+render();
+notify("✅ Backup Restored!");
+return true;
+} catch (e) {
+notify("⚠️ Invalid backup data");
+return false;
+}
+}
+
+document.getElementById("btnDownloadFile").onclick = function() {
+try {
+var blob = new Blob([getBackupJson()], { type: "application/json;charset=utf-8" });
+var url = URL.createObjectURL(blob);
+var a = document.createElement("a");
+a.href = url;
+a.download = "Unilever_POS_Backup_" + new Date().toISOString().slice(0, 10) + ".json";
+document.body.appendChild(a);
+a.click();
+setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+notify("💾 File Saved!");
+} catch (e) {
+document.getElementById("btnExportText").click();
+}
+};
+
+document.getElementById("btnOpenFile").onclick = function() {
+document.getElementById("inpBackupFile").value = "";
+document.getElementById("inpBackupFile").click();
+};
+
+document.getElementById("inpBackupFile").onchange = function(e) {
+var f = e.target.files && e.target.files[0];
+if (!f) return;
+var r = new FileReader();
+r.onload = function(ev) { restoreFromJsonString(ev.target.result); };
+r.readAsText(f);
+};
+
+document.getElementById("btnExportText").onclick = function() {
+var payload = getBackupJson();
+document.getElementById("importTextBox").style.display = "none";
+document.getElementById("exportTextBox").style.display = "block";
+var out = document.getElementById("outBackupText");
+out.value = payload;
+copyTextUniversal(payload, function(ok) {
+notify(ok ? "📋 Backup Copied!" : "📋 Select & copy box below");
+});
+};
+
+document.getElementById("btnHideExport").onclick = function() {
+document.getElementById("exportTextBox").style.display = "none";
+};
+
+document.getElementById("btnImportText").onclick = function() {
+document.getElementById("exportTextBox").style.display = "none";
+var box = document.getElementById("importTextBox");
+box.style.display = box.style.display === "none" ? "block" : "none";
+};
+
+document.getElementById("btnHideImport").onclick = function() {
+document.getElementById("importTextBox").style.display = "none";
+};
+
+document.getElementById("btnConfirmRestoreText").onclick = function() {
+var raw = document.getElementById("inpRestoreText").value;
+if (restoreFromJsonString(raw)) {
+document.getElementById("inpRestoreText").value = "";
+document.getElementById("importTextBox").style.display = "none";
+}
+};
+
+loadStorage();
+render();
+})();
+</script>
+</body>
+</html>
